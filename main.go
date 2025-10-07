@@ -16,36 +16,32 @@ func main() {
 	// Get configuration from user
 	studyDuration := promptForDuration("Enter study duration (minutes): ")
 	restDuration := promptForDuration("Enter rest duration (minutes): ")
-	sessionHours := promptForDuration("Enter total session duration (hours): ")
+	numCycles := promptForDuration("Enter total number of cycles: ")
 
 	fmt.Println("\nConfiguration:")
-	fmt.Printf("Study Cycle: %d minutes\n", studyDuration)
-	fmt.Printf("Rest Cycle:  %d minutes\n", restDuration)
-	fmt.Printf("Session:     %d hours\n", sessionHours)
+	fmt.Printf("Study Cycle:  %d minutes\n", studyDuration)
+	fmt.Printf("Rest Cycle:   %d minutes\n", restDuration)
+	fmt.Printf("Total Cycles: %d\n", numCycles)
 
-	totalSessionTime := time.Duration(sessionHours) * time.Hour
-
-	startPomodoro(studyDuration, restDuration, totalSessionTime)
+	startPomodoro(studyDuration, restDuration, numCycles)
 }
 
-func startPomodoro(studyMins, restMins int, totalTime time.Duration) {
-	startTime := time.Now()
-
-	//Create Ticker durations
+func startPomodoro(studyMins, restMins int, numCycles int) {
 	studyDuration := time.Duration(studyMins) * time.Minute
 	restDuration := time.Duration(restMins) * time.Minute
 
-	fmt.Printf("\nStarting Pomodoro session for %v...\n", totalTime)
+	totalDuration := (studyDuration + restDuration) * time.Duration(numCycles)
 
-	//Main loop for the session
-	for time.Since(startTime) < totalTime {
+	fmt.Printf("\nStarting Pomodoro session for %d cycles (Est. Total Time: %v)\n", numCycles, totalDuration)
+
+	for i := 1; i <= numCycles; i++ {
+		fmt.Printf("\n--- CYCLE %d of %d ---\n", i, numCycles)
+		
 		runTimer("STUDY", studyDuration)
 
-		if time.Since(startTime) >= totalTime{
-			break
+		if i < numCycles {
+			runTimer("REST", restDuration)
 		}
-
-		runTimer("REST", restDuration)
 	}
 
 	fmt.Println("\n Pomodoro Session Complete!")
@@ -63,23 +59,28 @@ func runTimer(cycleType string, duration time.Duration) {
 func promptForDuration(promptText string) int {
 	reader := bufio.NewReader(os.Stdin)
 
-	fmt.Print(promptText)
+	for {
+		fmt.Print(promptText)
 
-	inputText, err := reader.ReadString('\n')
-	if err != nil {
-		log.Fatalf("Failed to read user input: %v", err)
+		inputText, err := reader.ReadString('\n')
+		if err != nil {
+			log.Fatalf("Failed to read user input: %v", err)
+		}
+
+		inputText = strings.TrimSpace(inputText)
+
+		duration, err := strconv.Atoi(inputText)
+		if err != nil {
+			fmt.Printf("Invalid input: '%s' is not a whole number. Please enter a valid integer.\n", inputText)
+			continue
+		}
+
+		if duration <= 0 {
+			fmt.Println("Duration or cycle count must be a positive number. Please try again.")
+			continue
+		}
+
+		return duration
 	}
 
-	inputText = strings.TrimSpace(inputText)
-
-	duration, err := strconv.Atoi(inputText)
-	if err != nil {
-		log.Fatalf("Invalid input: '%s' is not a valid number. Error: %v", inputText, err)
-	}
-
-	if duration <= 0 {
-		fmt.Println("Duration must be a positive number. Please try again")
-	}
-
-	return duration
 }
