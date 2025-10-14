@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"bufio"
 	"fmt"
 	"log"
@@ -18,10 +19,18 @@ const (
 func main() {
 	fmt.Println("--- GO Pomodoro CLI ---")
 
-	// Get configuration from user
-	studyDuration := promptForDuration("Enter study duration (minutes): ")
-	restDuration := promptForDuration("Enter rest duration (minutes): ")
-	numCycles := promptForDuration("Enter total number of cycles: ")
+	studyTimeFlag := flag.Int("study", 0, "study duration in minutes")
+	restTimeFlag := flag.Int("rest", 0, "rest duration in minutes")
+	cycleNumberFlag := flag.Int("cycles", 0, "number of pomodoro cycles")
+
+	flag.Parse()
+
+	//Validate and get study duration
+	studyDuration := getDurationFromFlagOrPrompt(*studyTimeFlag, "Enter study duration (minutes): ")
+	
+	restDuration := getDurationFromFlagOrPrompt(*restTimeFlag, "Enter rest duration (minutes): ")
+
+	numCycles := getDurationFromFlagOrPrompt(*cycleNumberFlag, "Enter number of pomodoro cycles: ")
 
 	fmt.Println("\nConfiguration:")
 	fmt.Printf("Study Cycle:  %d minutes\n", studyDuration)
@@ -30,6 +39,23 @@ func main() {
 
 	startPomodoro(studyDuration, restDuration, numCycles)
 }
+
+// getDurationFromFlagOrPrompt handles the logic for getting a value either from flag or prompt
+func getDurationFromFlagOrPrompt(flagValue int, promptText string) int {
+	//If flag was provided and has a valid value (> 0), use it
+	if flagValue > 0 {
+		return flagValue
+	}
+
+	// If flag was provided but value is invalid (<= 0), show error and prompt
+	if flagValue < 0 {
+		fmt.Printf("Invalid flag value: %d. Value must be positive.\n", flagValue)
+		fmt.Println("Please enter a valid value: ")
+	}
+
+	return promptForDuration(promptText)
+}
+
 
 func notify(title string) {
     // 1. Simple escaping: Replace single quotes with double single quotes ('' is a literal ' in PS)
