@@ -10,9 +10,16 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/term"
 )
 
+type TimerState int
+
 const (
+	StateRunning TimerState = iota
+	StatePaused
+	StateStopped
 	toastTemplateTypeText02 = 2
 )
 
@@ -49,10 +56,10 @@ func main() {
 
 	// Session stats and start tracking
 	sessionStats := &SessionStats{
-		StartTime: time.Now(),
-		TotalCycles: numCycles,
+		StartTime:      time.Now(),
+		TotalCycles:    numCycles,
 		TotalStudyTime: time.Duration(studyDuration) * time.Minute * time.Duration(numCycles),
-		TotalRestTime: time.Duration(restDuration) * time.Minute * time.Duration(numCycles-1), //Last cycle doesnt have rest
+		TotalRestTime:  time.Duration(restDuration) * time.Minute * time.Duration(numCycles-1), //Last cycle doesnt have rest
 	}
 
 	startPomodoro(studyDuration, restDuration, numCycles, sessionStats)
@@ -80,30 +87,30 @@ func getDurationFromFlagOrPrompt(flagValue int, promptText string) int {
 
 func displaySessionSummary(stats *SessionStats) {
 	fmt.Println() // Add some space before the summary
-	
+
 	boxWidth := 38 // Slightly narrower for better fit
-	
+
 	// Top border
 	fmt.Printf("╔%s╗\n", strings.Repeat("═", boxWidth-2))
-	
+
 	// Title line - centered
 	title := "SESSION SUMMARY"
 	titlePadding := (boxWidth - 2 - len(title)) / 2
-	fmt.Printf("║%s%s%s║\n", 
+	fmt.Printf("║%s%s%s║\n",
 		strings.Repeat(" ", titlePadding),
 		title,
 		strings.Repeat(" ", boxWidth-2-len(title)-titlePadding))
-	
+
 	// Separator
 	fmt.Printf("╠%s╣\n", strings.Repeat("═", boxWidth-2))
-	
+
 	// Content lines - properly aligned
 	fmt.Printf("║ Started:   %s║\n", formatLine(stats.StartTime.Format("15:04:05"), boxWidth-13))
 	fmt.Printf("║ Ended:     %s║\n", formatLine(stats.EndTime.Format("15:04:05"), boxWidth-13))
 	fmt.Printf("║ Cycles:    %s║\n", formatLine(fmt.Sprintf("%d/%d completed", stats.CompletedCycles, stats.TotalCycles), boxWidth-13))
 	fmt.Printf("║ Study:     %s║\n", formatLine(fmt.Sprintf("%d minutes", int(stats.TotalStudyTime.Minutes())), boxWidth-13))
 	fmt.Printf("║ Rest:      %s║\n", formatLine(fmt.Sprintf("%d minutes", int(stats.TotalRestTime.Minutes())), boxWidth-13))
-	
+
 	// Bottom border
 	fmt.Printf("╚%s╝\n", strings.Repeat("═", boxWidth-2))
 }
@@ -115,7 +122,6 @@ func formatLine(text string, width int) string {
 	}
 	return text + strings.Repeat(" ", width-len(text))
 }
-
 
 func notify(title string) {
 	// 1. Simple escaping: Replace single quotes with double single quotes ('' is a literal ' in PS)
@@ -152,7 +158,7 @@ func startPomodoro(studyMins, restMins int, numCycles int, stats *SessionStats) 
 
 	for i := 1; i <= numCycles; i++ {
 		fmt.Printf("\n--- CYCLE %d of %d ---\n", i, numCycles)
-		
+
 		runTimer("STUDY", studyDuration)
 		stats.CompletedCycles = i // Update completed cycles after each study session
 
@@ -165,24 +171,103 @@ func startPomodoro(studyMins, restMins int, numCycles int, stats *SessionStats) 
 	fmt.Println("\nPomodoro Session Complete!")
 }
 
+func listenForInput(inputCh chan<- string) {
+	fd := int(os.Stdin.Fd())
+	oldState, err := term.MakeRaw(fd)
+	if err != nil {
+		log.Printf("Failed to set terminal to raw mode, falling back to buffered input: %v", err)
+		listenForPause(inputCh)
+		return
+	}
+	defer term.Restore(fd, oldState)
+
+	for {
+		buf := make([]byte, 1)
+
+		if _, err := os.Stdin.Read(buf); err != nil {
+			continue
+		}
+
+		char := rune(buf[0])
+
+		switch char {
+		case 'p', 'P':
+			inputCh <- "pause"
+		case 'r', 'R':
+			inputCh <- "resume"
+		case 'q', 'Q':
+			inputCh <- "quit"
+		case 3: // ASCII para Ctrl+C (Interrupção - importante no raw mode)
+			inputCh <- "quit"
+		}
+	}
+}
+
+func listenForPause(inputCh chan<- string) {
+	reader := bufio.NewReader(os.Stdin)
+	for {
+		inputText, err := reader.ReadString('\n')
+		if err != nil {
+			continue
+		}
+
+		inputChar := strings.TrimSpace(inputText)
+		if len(inputChar) == 0 {
+			continue
+		}
+		char := rune(inputChar[0])
+
+		switch char {
+		case 'p', 'P':
+			inputCh <- "pause"
+		case 'r', 'R':
+			inputCh <- "resume"
+		case 'q', 'Q':
+			inputCh <- "quit"
+		}
+	}
+}
+
 func runTimer(cycleType string, duration time.Duration) {
 	fmt.Printf("\n⏰ Starting %s cycle for %v...\n", cycleType, duration)
+	fmt.Println("Controls: [p] pause, [r] resume, [q] quit")
 
 	// 1. Setup the Ticker and Timer
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
-	// Ticks every 1 second
-	timer := time.NewTimer(duration)
-	defer timer.Stop() // Timer to signal when the total duration is up
 
-	remaining := duration // Start remaining time at the full duration
+	tickCh := make(chan time.Time, 1)
 
+	go func() {
+		defer close(tickCh)
+		for t := range ticker.C {
+			tickCh <- t
+		}
+	}()
+
+	remaining := duration
+	state := StateRunning
+
+	timer := time.NewTimer(remaining)
+	defer func() {
+		if timer != nil {
+			timer.Stop()
+		}
+	}()
+
+	inputCh := make(chan string)
+
+	go listenForInput(inputCh)
+
+	cleanupSpaces := strings.Repeat(" ", 80)
+
+	tickCh <- time.Now()
 	// 2. Main Countdown Loop
 	for {
 		select {
 		case <-timer.C:
 			// Timer expired - cycle complete
-			fmt.Printf("\rTime remaining: 00:00%s\n", strings.Repeat(" ", 5))
+			fmt.Printf("\rTime remaining: 00:00%s\n", strings.Repeat(" ", 20))
 
 			// Send notification
 			if cycleType == "STUDY" {
@@ -194,17 +279,66 @@ func runTimer(cycleType string, duration time.Duration) {
 			fmt.Printf("%s cycle complete!\n", cycleType)
 			return
 
-		case <-ticker.C:
-			// Update countdown display
-			remaining -= 1 * time.Second
+		case <-tickCh:
+			if state == StateRunning {
+				remaining -= 1 * time.Second
 
-			minutes := int(remaining.Minutes())
-			seconds := int(remaining.Seconds()) % 60
+				minutes := int(remaining.Minutes())
+				seconds := int(remaining.Seconds()) % 60
 
-			timeStr := fmt.Sprintf("%02d:%02d", minutes, seconds)
-			fmt.Printf("\rTime remaining: %s", timeStr)
+				timeStr := fmt.Sprintf("%02d:%02d", minutes, seconds)
+				fmt.Printf("\rTime remaining: %s%s", timeStr, strings.Repeat(" ",25))
+
+				if remaining <= 0 {
+					return
+				}
+			}
+
+		case command := <-inputCh:
+
+			switch command {
+			case "pause":
+				if state == StateRunning {
+					state = StatePaused
+
+					if !timer.Stop() {
+						select {
+						case <-timer.C:
+						default:
+						}
+					}
+					
+
+					fmt.Printf("\r⏸️  PAUSED - Remaining: %s [r]esume%s",
+						formatDuration(remaining), cleanupSpaces)
+				}
+
+			case "resume":
+				if state == StatePaused {
+					state = StateRunning
+
+					timer.Reset(remaining)
+
+					
+					fmt.Printf("\r▶️  RESUMED - Remaining: %s [p]ause%s",
+						formatDuration(remaining), cleanupSpaces)
+
+					tickCh <- time.Now()
+				}
+
+			case "quit":
+				fmt.Printf("\r%s\r", strings.Repeat(" ", 30))
+				fmt.Println("\nTimer cancelled by user!") 
+				os.Exit(0)
+			}
 		}
 	}
+}
+
+func formatDuration(d time.Duration) string {
+	minutes := int(d.Minutes())
+	seconds := int(d.Seconds()) % 60
+	return fmt.Sprintf("%02d:%02d", minutes, seconds)
 }
 
 func promptForDuration(promptText string) int {
