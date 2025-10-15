@@ -61,8 +61,8 @@ func main() {
 
 
 	fmt.Println("\nConfiguration:")
-	fmt.Printf("Study Cycle:  %d %d\n", studyDuration, unitForPrompt)
-	fmt.Printf("Rest Cycle:   %d %d\n", restDuration, unitForPrompt)
+	fmt.Printf("Study Cycle:  %d %w\n", studyDuration, unitForPrompt)
+	fmt.Printf("Rest Cycle:   %d %s\n", restDuration, unitForPrompt)
 	fmt.Printf("Total Cycles: %d\n", numCycles)
 	
 
