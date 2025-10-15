@@ -57,7 +57,7 @@ func main() {
 	}
 
 	studyDurationFinal := time.Duration(studyDuration) * timeUnit
-	restDurationFinal := time.Duration(studyDuration) * timeUnit
+	restDurationFinal := time.Duration(restDuration) * timeUnit
 
 
 	fmt.Println("\nConfiguration:")
@@ -120,8 +120,8 @@ func displaySessionSummary(stats *SessionStats) {
 	fmt.Printf("║ Started:   %s║\n", formatLine(stats.StartTime.Format("15:04:05"), boxWidth-13))
 	fmt.Printf("║ Ended:     %s║\n", formatLine(stats.EndTime.Format("15:04:05"), boxWidth-13))
 	fmt.Printf("║ Cycles:    %s║\n", formatLine(fmt.Sprintf("%d/%d completed", stats.CompletedCycles, stats.TotalCycles), boxWidth-13))
-	fmt.Printf("║ Study:     %s║\n", formatLine(fmt.Sprintf("%d minutes", int(stats.TotalStudyTime.Minutes())), boxWidth-13))
-	fmt.Printf("║ Rest:      %s║\n", formatLine(fmt.Sprintf("%d minutes", int(stats.TotalRestTime.Minutes())), boxWidth-13))
+	fmt.Printf("║ Study:     %s║\n", formatLine(formatTotalTime(stats.TotalStudyTime), boxWidth-13))
+	fmt.Printf("║ Rest:      %s║\n", formatLine(formatTotalTime(stats.TotalStudyTime), boxWidth-13))
 
 	// Bottom border
 	fmt.Printf("╚%s╝\n", strings.Repeat("═", boxWidth-2))
@@ -135,7 +135,14 @@ func formatLine(text string, width int) string {
 	return text + strings.Repeat(" ", width-len(text))
 }
 
+func formatTotalTime(d time.Duration) string {
+	minutes := int(d.Minutes())
 
+	if minutes == 0 && d > 0 {
+		return fmt.Sprintf("%d seconds", int(d.Seconds()))
+	}
+	return fmt.Sprintf("%d minutes", minutes)
+}
 
 func startPomodoro(studyDuration time.Duration, restDuration time.Duration, numCycles int, stats *SessionStats) {
 
@@ -282,7 +289,7 @@ func runTimer(cycleType string, duration time.Duration) string {
 			// Send notification
 
 			fmt.Printf("%s cycle complete!\n", cycleType)
-			return ""
+			return cycleType
 
 		case <-tickCh:
 			if state == StateRunning {
@@ -295,7 +302,7 @@ func runTimer(cycleType string, duration time.Duration) string {
 				fmt.Printf("\rTime remaining: %s%s", timeStr, strings.Repeat(" ",25))
 
 				if remaining <= 0 {
-					return ""
+					return cycleType
 				}
 			}
 
