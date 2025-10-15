@@ -37,7 +37,8 @@ func main() {
 	studyTimeFlag := flag.Int("study", 0, "study duration in minutes")
 	restTimeFlag := flag.Int("rest", 0, "rest duration in minutes")
 	cycleNumberFlag := flag.Int("cycles", 0, "number of pomodoro cycles")
-	scaleFactorFlag := flag.Float64("scale", 1.0, "Duration scale factor. Use 0.01 for 1/100th speed testing")
+	testUnitSecondsFlag := flag.Bool("test-unit-seconds", false, "If true, treats cycles durations as SECONDS instead of minutes for quick testing.")
+
 
 	flag.Parse()
 
@@ -48,32 +49,32 @@ func main() {
 
 	numCycles := getDurationFromFlagOrPrompt(*cycleNumberFlag, "Enter number of pomodoro cycles: ")
 
-	scaleFactor := *scaleFactorFlag
-
-	studyDurationScaled := int(float64(studyDuration) * scaleFactor)
-	restDurationScaled := int(float64(restDuration) * scaleFactor)
-
-	if studyDurationScaled < 1 {
-		studyDurationScaled = 1
+	timeUnit := time.Minute
+	unitForPrompt := "minutes"
+	if *testUnitSecondsFlag {
+		timeUnit = time.Second
+		unitForPrompt = "seconds"
 	}
-	if restDurationScaled < 1 {
-		restDurationScaled = 1
-	}
+
+	studyDurationFinal := time.Duration(studyDuration) * timeUnit
+	restDurationFinal := time.Duration(studyDuration) * timeUnit
+
 
 	fmt.Println("\nConfiguration:")
-	fmt.Printf("Study Cycle:  %d minutes\n", studyDuration)
-	fmt.Printf("Rest Cycle:   %d minutes\n", restDuration)
+	fmt.Printf("Study Cycle:  %d %d\n", studyDuration, unitForPrompt)
+	fmt.Printf("Rest Cycle:   %d %d\n", restDuration, unitForPrompt)
 	fmt.Printf("Total Cycles: %d\n", numCycles)
+	
 
 	// Session stats and start tracking
 	sessionStats := &SessionStats{
 		StartTime:      time.Now(),
 		TotalCycles:    numCycles,
-		TotalStudyTime: time.Duration(studyDuration) * time.Minute * time.Duration(numCycles),
-		TotalRestTime:  time.Duration(restDuration) * time.Minute * time.Duration(numCycles-1), //Last cycle doesnt have rest
+		TotalStudyTime: studyDurationFinal * time.Duration(numCycles),
+		TotalRestTime:  restDurationFinal * time.Duration(numCycles-1),
 	}
 
-	startPomodoro(studyDurationScaled, restDurationScaled, numCycles, sessionStats)
+	startPomodoro(studyDurationFinal, restDurationFinal, numCycles, sessionStats)
 
 	//Update end time and show summary
 	sessionStats.EndTime = time.Now()
@@ -136,9 +137,7 @@ func formatLine(text string, width int) string {
 
 
 
-func startPomodoro(studyMins, restMins int, numCycles int, stats *SessionStats) {
-	studyDuration := time.Duration(studyMins) * time.Minute
-	restDuration := time.Duration(restMins) * time.Minute
+func startPomodoro(studyDuration time.Duration, restDuration time.Duration, numCycles int, stats *SessionStats) {
 
 	totalDuration := (studyDuration + restDuration) * time.Duration(numCycles)
 
