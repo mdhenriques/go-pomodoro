@@ -19,7 +19,6 @@ const (
 	StateRunning TimerState = iota
 	StatePaused
 	StateStopped
-	toastTemplateTypeText02 = 2
 )
 
 //SessionStats holds all the data for the summary
@@ -38,6 +37,7 @@ func main() {
 	studyTimeFlag := flag.Int("study", 0, "study duration in minutes")
 	restTimeFlag := flag.Int("rest", 0, "rest duration in minutes")
 	cycleNumberFlag := flag.Int("cycles", 0, "number of pomodoro cycles")
+	scaleFactorFlag := flag.Float64("scale", 1.0, "Duration scale factor. Use 0.01 for 1/100th speed testing")
 
 	flag.Parse()
 
@@ -47,6 +47,18 @@ func main() {
 	restDuration := getDurationFromFlagOrPrompt(*restTimeFlag, "Enter rest duration (minutes): ")
 
 	numCycles := getDurationFromFlagOrPrompt(*cycleNumberFlag, "Enter number of pomodoro cycles: ")
+
+	scaleFactor := *scaleFactorFlag
+
+	studyDurationScaled := int(float64(studyDuration) * scaleFactor)
+	restDurationScaled := int(float64(restDuration) * scaleFactor)
+
+	if studyDurationScaled < 1 {
+		studyDurationScaled = 1
+	}
+	if restDurationScaled < 1 {
+		restDurationScaled = 1
+	}
 
 	fmt.Println("\nConfiguration:")
 	fmt.Printf("Study Cycle:  %d minutes\n", studyDuration)
@@ -61,7 +73,7 @@ func main() {
 		TotalRestTime:  time.Duration(restDuration) * time.Minute * time.Duration(numCycles-1), //Last cycle doesnt have rest
 	}
 
-	startPomodoro(studyDuration, restDuration, numCycles, sessionStats)
+	startPomodoro(studyDurationScaled, restDurationScaled, numCycles, sessionStats)
 
 	//Update end time and show summary
 	sessionStats.EndTime = time.Now()
@@ -135,11 +147,19 @@ func startPomodoro(studyMins, restMins int, numCycles int, stats *SessionStats) 
 	for i := 1; i <= numCycles; i++ {
 		fmt.Printf("\n--- CYCLE %d of %d ---\n", i, numCycles)
 
-		runTimer("STUDY", studyDuration)
+		studyResult := runTimer("STUDY", studyDuration)
+		if studyResult == "::QUIT_SESSION::" {
+			return
+		}
+		notify("Study Complete! Coffee Break")
 		stats.CompletedCycles = i // Update completed cycles after each study session
 
 		if i < numCycles {
-			runTimer("REST", restDuration)
+			restResult := runTimer("REST", restDuration)
+			if restResult == "::QUIT_SESSION::" {
+				return
+			}
+			notify("Rest ended. Keep focusing!!")
 		}
 	}
 
@@ -147,17 +167,23 @@ func startPomodoro(studyMins, restMins int, numCycles int, stats *SessionStats) 
 	fmt.Println("\nPomodoro Session Complete!")
 }
 
-func listenForInput(inputCh chan<- string) {
+func listenForInput(inputCh chan<- string, doneCh <-chan struct{}) {
 	fd := int(os.Stdin.Fd())
 	oldState, err := term.MakeRaw(fd)
 	if err != nil {
 		log.Printf("Failed to set terminal to raw mode, falling back to buffered input: %v", err)
-		listenForPause(inputCh)
+		listenForPause(inputCh, doneCh)
 		return
 	}
 	defer term.Restore(fd, oldState)
 
 	for {
+		select {
+		case <-doneCh:
+			return
+		default:
+		}
+
 		buf := make([]byte, 1)
 
 		if _, err := os.Stdin.Read(buf); err != nil {
@@ -179,9 +205,15 @@ func listenForInput(inputCh chan<- string) {
 	}
 }
 
-func listenForPause(inputCh chan<- string) {
+func listenForPause(inputCh chan<- string, doneCh <-chan struct{}) {
+
 	reader := bufio.NewReader(os.Stdin)
 	for {
+		select {
+		case <-doneCh:
+			return
+		default:
+		}
 		inputText, err := reader.ReadString('\n')
 		if err != nil {
 			continue
@@ -204,7 +236,7 @@ func listenForPause(inputCh chan<- string) {
 	}
 }
 
-func runTimer(cycleType string, duration time.Duration) {
+func runTimer(cycleType string, duration time.Duration) string {
 	fmt.Printf("\n⏰ Starting %s cycle for %v...\n", cycleType, duration)
 	fmt.Println("Controls: [p] pause, [r] resume, [q] quit")
 
@@ -232,8 +264,11 @@ func runTimer(cycleType string, duration time.Duration) {
 	}()
 
 	inputCh := make(chan string)
+	doneCh := make(chan struct{})
 
-	go listenForInput(inputCh)
+	go listenForInput(inputCh, doneCh)
+
+	defer close(doneCh)
 
 	cleanupSpaces := strings.Repeat(" ", 80)
 
@@ -246,14 +281,9 @@ func runTimer(cycleType string, duration time.Duration) {
 			fmt.Printf("\rTime remaining: 00:00%s\n", strings.Repeat(" ", 20))
 
 			// Send notification
-			if cycleType == "STUDY" {
-				notify("Study Complete! It's REST time.")
-			} else {
-				notify("Rest Complete! Time to go back to WORK!")
-			}
 
 			fmt.Printf("%s cycle complete!\n", cycleType)
-			return
+			return ""
 
 		case <-tickCh:
 			if state == StateRunning {
@@ -266,7 +296,7 @@ func runTimer(cycleType string, duration time.Duration) {
 				fmt.Printf("\rTime remaining: %s%s", timeStr, strings.Repeat(" ",25))
 
 				if remaining <= 0 {
-					return
+					return ""
 				}
 			}
 
@@ -305,7 +335,7 @@ func runTimer(cycleType string, duration time.Duration) {
 			case "quit":
 				fmt.Printf("\r%s\r", strings.Repeat(" ", 30))
 				fmt.Println("\nTimer cancelled by user!") 
-				os.Exit(0)
+				return "::QUIT_SESSION::"
 			}
 		}
 	}

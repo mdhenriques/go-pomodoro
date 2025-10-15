@@ -10,6 +10,8 @@ import (
 	"strings"
 )
 
+const toastTemplateTypeText02 = 2
+
 func notify(title string) {
 	// 1. Simple escaping: Replace single quotes with double single quotes ('' is a literal ' in PS)
 	safeTitle := strings.ReplaceAll(title, "'", "''")
