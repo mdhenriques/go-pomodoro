@@ -1,20 +1,26 @@
 # go-pomodoro
 
 A Pomodoro timer for the terminal, built to explore Go's concurrency model and cross-platform capabilities.
-This project uses goroutines and channels for real-time keyboard input handling while the timer runs, and includes platform-specific implementations for Windows and Linux desktop notifications using Go's build tags.
+
+This project uses **goroutines** and **channels** for real-time keyboard input handling while the timer runs, and includes platform-specific implementations for **Windows** and **Linux** desktop notifications using Go's build tags.
 
 ## Installation
 
 ### Prerequisites
 - Go 1.25.1 or higher
+- **Linux only**: `libnotify` for desktop notifications (usually pre-installed)
 
 ### Build from source
 
 ```bash
 git clone https://github.com/mdhenriques/go-pomodoro.git
 cd go-pomodoro
-go build -o pomodoro
+go build
 ```
+
+This creates an executable:
+- **Windows**: `go-pomodoro.exe`
+- **Linux**: `go-pomodoro`
 
 ## Usage
 
@@ -22,14 +28,26 @@ go build -o pomodoro
 
 Run without flags to enter values interactively:
 
+**Windows:**
 ```bash
-./pomodoro
+go-pomodoro.exe
+```
+
+**Linux:**
+```bash
+./go-pomodoro
 ```
 
 ### Quick start with flags
 
+**Windows:**
 ```bash
-./pomodoro --study 25 --rest 5 --cycles 4
+go-pomodoro.exe --study 25 --rest 5 --cycles 4
+```
+
+**Linux:**
+```bash
+./go-pomodoro --study 25 --rest 5 --cycles 4
 ```
 
 ### Available flags
@@ -48,18 +66,33 @@ Run without flags to enter values interactively:
 ## Examples
 
 Standard pomodoro (25 min work, 5 min rest, 4 cycles):
+
+**Windows:**
 ```bash
-./pomodoro --study 25 --rest 5 --cycles 4
+go-pomodoro.exe --study 25 --rest 5 --cycles 4
+```
+
+**Linux:**
+```bash
+./go-pomodoro --study 25 --rest 5 --cycles 4
 ```
 
 Short sessions for testing:
 ```bash
-./pomodoro --study 2 --rest 1 --cycles 3
+# Windows
+go-pomodoro.exe --study 2 --rest 1 --cycles 3
+
+# Linux
+./go-pomodoro --study 2 --rest 1 --cycles 3
 ```
 
 Custom workflow:
 ```bash
-./pomodoro --study 50 --rest 10 --cycles 3
+# Windows
+go-pomodoro.exe --study 50 --rest 10 --cycles 3
+
+# Linux
+./go-pomodoro --study 50 --rest 10 --cycles 3
 ```
 
 ## Session Summary
